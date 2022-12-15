@@ -20,23 +20,25 @@ from pendulum_envs import *
 index = 0 # just for ternsorboard
 
 class DQNSolver(nn.Module):
-    """
-    Convolutional Neural Net with 3 conv layers and two linear layers
-    """
     def __init__(self, input_shape, n_actions):
         super(DQNSolver, self).__init__()
 
         self.fc = nn.Sequential(
             nn.Linear(input_shape[0], 16),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Linear(16, 32),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Linear(32, 64),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Linear(64, 64),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Linear(64, n_actions)
         )
+        for layer in self.fc:
+            try:
+                nn.init.kaiming_uniform(layer.weight)
+            except:
+                print("layer dont have that")
     
     def forward(self, x):
         out = self.fc(x)
@@ -44,22 +46,26 @@ class DQNSolver(nn.Module):
 
 class DQNAgent:
 
-    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr, exploration_max, exploration_min, exploration_decay, UPDATE_TARGET=500, pretrained = False):
-        self.update_target = UPDATE_TARGET
+    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr,pretrained = False, tau=0.0001):
         # Define DQN Layers
         self.state_space = state_space
         self.action_space = action_space
         self.device = 'cpu'
-
+        self.tau = tau
         # DQN network  
-        self.dqn = DQNSolver(state_space, action_space).to(self.device)
-        self.dqn.train()
-        self.optimizer = torch.optim.SGD(self.dqn.parameters(), lr=lr)
+        self.policy_net = DQNSolver(state_space, action_space).to(self.device)
+        self.target_net = DQNSolver(state_space, action_space).to(self.device)
+        self.policy_net.train()
+        # self.optimizer = torch.optim.SGD(self.policy_net.parameters(), lr=lr, momentum = 0.5)
+        self.optimizer = torch.optim.AdamW(self.policy_net.parameters(), lr=lr, amsgrad=True)
+        # self.optimizer = torch.optim.ASGD(self.policy_net.parameters(), lr=lr) # slightly outperformed standard SDG in my test
+        # self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=lr) # Seems far more stable than either SDG
+        # self.optimizer = torch.optim.SGD(self.policy_net.parameters(), lr=lr)
         if pretrained:
             try:
-                self.dqn.load_state_dict(torch.load("DQN_PEND.pt", map_location=torch.device(self.device)))
+                self.policy_net.load_state_dict(torch.load("DQN_PEND.pt", map_location=torch.device(self.device)))
                 self.optimizer.load_state_dict(torch.load("DQN_PEND_OPTIM.pt"))
-                self.dqn.train()
+                self.policy_net.train()
             except Exception as e:
                 print("NO SAVED MODEL")
                 print(e)
@@ -76,150 +82,175 @@ class DQNAgent:
         # Learning parameters
         self.gamma = gamma
         self.l2 = nn.MSELoss().to(self.device)
-        self.exploration_max = exploration_max
-        self.exploration_rate = exploration_max
-        self.exploration_min = exploration_min
-        self.exploration_decay = exploration_decay
-
         self.update_target_net()
     
     def update_target_net(self):
-        self.target = copy.deepcopy(self.dqn)
-        self.target.eval()
-        self.target_index = 0
+        if (self.tau != 0): # option of hard vs soft target net update
+            target_net_state_dict = self.target_net.state_dict()
+            policy_net_state_dict = self.policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key]*self.tau + target_net_state_dict[key]*(1-self.tau)
+            self.target_net.load_state_dict(target_net_state_dict)
+        else:
+            self.target_net = copy.deepcopy(self.policy_net)
+            self.target_net.eval()
 
-    def remember(self, state, action, reward, state2, done):
+    def remember(self, state, action, COST, state2, done):
         """Store the experiences in a buffer to use later"""
         self.STATE_MEM[self.ending_position] = state.float()
         self.ACTION_MEM[self.ending_position] = action.float()
-        self.REWARD_MEM[self.ending_position] = reward.float()
+        self.COST_MEM[self.ending_position] = COST.float()
         self.STATE2_MEM[self.ending_position] = state2.float()
         self.DONE_MEM[self.ending_position] = done.float()
-        self.ending_position = (self.ending_position + 1) % self.max_memory_size  # FIFO tensor
+        self.ending_position = (self.ending_position + 1) % self.max_memory_size  
         self.num_in_queue = min(self.num_in_queue + 1, self.max_memory_size)
 
     def forget(self):
         self.STATE_MEM = torch.zeros(self.max_memory_size, *self.state_space)
         self.ACTION_MEM = torch.zeros(self.max_memory_size, 1)
-        self.REWARD_MEM = torch.zeros(self.max_memory_size, 1)
+        self.COST_MEM = torch.zeros(self.max_memory_size, 1)
         self.STATE2_MEM = torch.zeros(self.max_memory_size, *self.state_space)
         self.DONE_MEM = torch.zeros(self.max_memory_size, 1)
         self.ending_position = 0
         self.num_in_queue = 0
 
     
-    def batch_experiences(self):
-        """Randomly sample 'batch size' experiences"""
+    def get_batch(self):
         idx = random.choices(range(self.num_in_queue), k=self.memory_sample_size)
         STATE = self.STATE_MEM[idx]
         ACTION = self.ACTION_MEM[idx]
-        REWARD = self.REWARD_MEM[idx]
+        COST = self.COST_MEM[idx]
         STATE2 = self.STATE2_MEM[idx]
         DONE = self.DONE_MEM[idx]      
-        return STATE, ACTION, REWARD, STATE2, DONE
+        return STATE, ACTION, COST, STATE2, DONE
     
-    def act(self, state, follow_policy):
-        """Epsilon-greedy action"""
-        if (random.random() < self.exploration_rate) and (not follow_policy):  
-            return torch.tensor([[random.randrange(self.action_space)]])
+    def choose_action(self, state, eps):
+        if (random.random() < eps):  
+            return torch.tensor([[random.randint(0,self.action_space-1)]], dtype=torch.long)
         else:
-            res = self.dqn(state.to(self.device))
-            return torch.argmax(res).unsqueeze(0).unsqueeze(0).cpu()
+            res = torch.argmin(self.policy_net(state), 1).unsqueeze(0).unsqueeze(0)
+            return res
     
-    def experience_replay(self, num_steps):
+    def replay_experience(self, num_steps):
         if self.memory_sample_size > self.num_in_queue:
             return False
         
         for i in range(num_steps):
             # Sample a batch of experiences
-            STATE, ACTION, REWARD, STATE2, DONE = self.batch_experiences()
+            STATE, ACTION, COST, STATE2, DONE = self.get_batch()
             STATE = STATE.to(self.device)
             ACTION = ACTION.to(self.device)
-            REWARD = REWARD.to(self.device)
+            COST = COST.to(self.device)
             STATE2 = STATE2.to(self.device)
             DONE = DONE.to(self.device)
             self.optimizer.zero_grad()
             
-            # Q-Learning target is Q*(S, A) <- r + γ max_a Q(S', a) 
-            target = REWARD + torch.mul((self.gamma * self.target(STATE2).max(1).values.unsqueeze(1)), 1 - DONE)
-            current = self.dqn(STATE).gather(1, ACTION.long())
-            # current = self.act(STATE, True)
-
+            #  r + γ min_a Q(S', a) 
+            next_val = (self.gamma * self.target_net(STATE2).min(1).values.unsqueeze(1))
+            target = COST + torch.mul(next_val, 1 - DONE)
+            
+            guess = self.policy_net(STATE)
+            
+            current = guess.gather(1, ACTION.long())
             loss = self.l2(current, target)
-            print(loss)
+
             writer.add_scalar("Loss/train", loss, index)
             
             loss.backward() # Compute gradients
+            torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 10)
+
             self.optimizer.step() # Backpropagate error
+            if (self.tau != 0): self.update_target_net()
             # global index
             inc_index()
 
-            self.target_index += 1
-            if self.target_index > self.update_target:
-                self.update_target_net()
-
         return True
-
-
 
 def inc_index():
     global index
     index +=1
 
-def run(training_mode, pretrained,  ex_min, ex_max, num_episodes=100):
-   
-    # env = gym.make('Breakout-v0') # can change the environmeent accordingly
-    # env = create_env(env)  # Wraps the environment so that frames are grayscale 
-    env = DoublePendulum()
-    observation_space = env.x.shape
-    action_space = env.nu
+def run(training_mode, pretrained, num_episodes=100):
+
+    env = DoublePendulum(make_single=True)
+    observation_space = env.q.shape
+
+    # HYPERPARAMS
+    UPDATE_TARGET_NET = 2000
+    TAU = 1e-5
+    MAX_MEM = 50000
+    ALPHA = 1e-5 # learning rate
+    GAMMA = 0.9999
+    BATCH_SIZE = 64
+    MAX_STEPS = 100
+    EXPLORE_MIN = 0.01
+    EXPLORE_MAX = 1.0
+    EXPLORE_DECAY = exp( log(EXPLORE_MIN/EXPLORE_MAX)/num_episodes ) 
+    EXPLORE_RATE = EXPLORE_MAX + 0.0
+    EXPLORE_LINEAR_DECAY = True # option to have linear vs exponential exploration decay
+    TRAIN_PER_EPISODE = False # option to train per episode or per transition
+
+
+    SAVE = 100
 
     agent = DQNAgent(state_space=observation_space,
-                     action_space=action_space,
-                     max_memory_size=10000,
-                     batch_size=256,
-                     gamma=0.9,
-                     lr=.00001,
-                     exploration_max=ex_max,
-                     exploration_min=ex_min,
-                     exploration_decay=0.999,
-                     pretrained=pretrained
+                     action_space=env.nu,
+                     max_memory_size=MAX_MEM,
+                     batch_size=BATCH_SIZE,
+                     gamma=GAMMA,
+                     lr=ALPHA,
+                     pretrained=pretrained,
+                     tau=TAU
                      )
 
-    
-    # Restart the environment for each episode
-    num_episodes = num_episodes
-
     for i in tqdm(range(num_episodes)):
-        total_steps = 0
-        while True:
-            state = env.reset()
-            state = torch.Tensor([state])
-            steps = 0
-            while True and steps < 100:
-                action = agent.act(state, False)
-                steps += 1
-                total_steps +=1
-                state_next, reward, terminal, _, info = env.step(action.item())
-                state_next = torch.Tensor([state_next])
-                reward = torch.tensor([reward]).unsqueeze(0)
-                terminal = torch.tensor([int(terminal)]).unsqueeze(0)
+        state = env.reset()
+        state = torch.Tensor([state])
+        steps = 0
+        total_cost = 0.0
+        g = 1.0
+        while True and steps < MAX_STEPS:
+            action = agent.choose_action(state, EXPLORE_RATE)
+            steps += 1
+            state_next, cost, terminal, _, _ = env.step(action.item())
+            total_cost += g* cost
+            g *= GAMMA
+            state_next = torch.Tensor([state_next])
+            cost = torch.Tensor([cost])
             
-                agent.remember(state, action, reward, state_next, terminal)
-                state = state_next
-                if terminal:
-                    break
-
-            if agent.experience_replay(1):
-                agent.exploration_rate *= agent.exploration_decay 
-                agent.exploration_rate = max(agent.exploration_rate, agent.exploration_min)
+            if steps == MAX_STEPS: terminal = True
+            terminal = torch.Tensor([int(terminal)])
+            agent.remember(state, action, cost, state_next, terminal)
+            state = state_next
+            if terminal:
                 break
+            if ((i +1) % SAVE == 0): env.render()
+
+            if not TRAIN_PER_EPISODE: agent.replay_experience(1)
+        if TRAIN_PER_EPISODE: agent.replay_experience(1)
+
+        # log total rewards 
+        writer.add_scalar("Total Episode Cost", total_cost, i)
+
+        # epsilon decay
+        if EXPLORE_LINEAR_DECAY: EXPLORE_RATE -= (EXPLORE_MAX - EXPLORE_MIN) / float(num_episodes)
+        else: EXPLORE_RATE *= EXPLORE_DECAY
+        EXPLORE_RATE =  max(EXPLORE_RATE, EXPLORE_MIN)
+
+        # update target net
+        if i % UPDATE_TARGET_NET == 0 and TAU == 0: agent.update_target_net()
+
         # Save the trained memory so that we can continue from where we stop using 'pretrained' = True
-        if (i + 1) % 200 == 0 and training_mode:
-            torch.save(agent.dqn.state_dict(), "DQN_PEND.pt")
-            torch.save(agent.optimizer.state_dict(), "DQN_PEND.pt")
+        if ((i +1) % SAVE == 0) and training_mode:
+            env.show((i + 1)/SAVE)
+            print(EXPLORE_RATE)
+            torch.save(agent.policy_net.state_dict(), "DQN_PEND.pt")
+            torch.save(agent.optimizer.state_dict(), "DQN_PEND_OPT.pt")
             print("okay")
     
     env.close()
 
-run(True, True, 0.001, 1.0, num_episodes=10000)
+run(True, False, num_episodes=2000)
+
+
+
