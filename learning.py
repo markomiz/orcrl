@@ -82,10 +82,10 @@ class DQNAgent:
         # Learning parameters
         self.gamma = gamma
         self.l2 = nn.MSELoss().to(self.device)
-        self.update_target_net()
+        self.update_target_net(soft=False)
     
-    def update_target_net(self):
-        if (self.tau != 0): # option of hard vs soft target net update
+    def update_target_net(self, soft=True):
+        if (soft): # option of hard vs soft target net update
             target_net_state_dict = self.target_net.state_dict()
             policy_net_state_dict = self.policy_net.state_dict()
             for key in policy_net_state_dict:
@@ -250,7 +250,7 @@ def run(training_mode, pretrained, num_episodes=100):
     
     env.close()
 
-run(True, False, num_episodes=2000)
+run(True, True, num_episodes=20000)
 
 
 
