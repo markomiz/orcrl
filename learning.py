@@ -20,25 +20,25 @@ from pendulum_envs import *
 index = 0 # just for ternsorboard
 
 class DQNSolver(nn.Module):
-    def __init__(self, input_shape, n_actions):
+    def __init__(self, input_shape, n_actions, width=1):
         super(DQNSolver, self).__init__()
 
         self.fc = nn.Sequential(
-            nn.Linear(input_shape[0], 16),
-            nn.ReLU(),
-            nn.Linear(16, 32),
-            nn.ReLU(),
-            nn.Linear(32, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, n_actions)
+            nn.Linear(input_shape[0], 16 * width),
+            nn.Tanh(),
+            nn.Linear(16 * width, 32 * width),
+            nn.Tanh(),
+            nn.Linear(32* width, 64* width),
+            nn.Tanh(),
+            nn.Linear(64* width, 64* width),
+            nn.Tanh(),
+            nn.Linear(64* width, n_actions)
         )
-        for layer in self.fc:
-            try:
-                nn.init.kaiming_uniform(layer.weight)
-            except:
-                print("layer dont have that")
+        # for layer in self.fc: # THIS IS FOR WHEN WE USE RELU activation
+        #     try:
+        #         nn.init.kaiming_uniform(layer.weight)
+        #     except:
+        #         print("layer dont have that")
     
     def forward(self, x):
         out = self.fc(x)
@@ -46,15 +46,15 @@ class DQNSolver(nn.Module):
 
 class DQNAgent:
 
-    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr,pretrained = False, tau=0.0001):
+    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr,pretrained = False, tau=0.0001, NAME = "Defualt", width=1):
         # Define DQN Layers
         self.state_space = state_space
         self.action_space = action_space
         self.device = 'cpu'
         self.tau = tau
         # DQN network  
-        self.policy_net = DQNSolver(state_space, action_space).to(self.device)
-        self.target_net = DQNSolver(state_space, action_space).to(self.device)
+        self.policy_net = DQNSolver(state_space, action_space, width).to(self.device)
+        self.target_net = DQNSolver(state_space, action_space, width).to(self.device)
         self.policy_net.train()
         # self.optimizer = torch.optim.SGD(self.policy_net.parameters(), lr=lr, momentum = 0.5)
         self.optimizer = torch.optim.AdamW(self.policy_net.parameters(), lr=lr, amsgrad=True)
@@ -63,8 +63,8 @@ class DQNAgent:
         # self.optimizer = torch.optim.SGD(self.policy_net.parameters(), lr=lr)
         if pretrained:
             try:
-                self.policy_net.load_state_dict(torch.load("DQN_PEND.pt", map_location=torch.device(self.device)))
-                self.optimizer.load_state_dict(torch.load("DQN_PEND_OPTIM.pt"))
+                self.policy_net.load_state_dict(torch.load( "Models/" + NAME + ".pt", map_location=torch.device(self.device)))
+                self.optimizer.load_state_dict(torch.load("Models/" + NAME + "_OPT.pt"))
                 self.policy_net.train()
             except Exception as e:
                 print("NO SAVED MODEL")
@@ -170,47 +170,49 @@ def inc_index():
     global index
     index +=1
 
-def run(training_mode, pretrained, num_episodes=100):
-
-    env = DoublePendulum(make_single=True)
+def train(NUM_EPISODES=10000, \
+    
+    UPDATE_TARGET_NET = 2000, # ignored if tau != 0
+    TAU = 1e-5,
+    MAX_MEM = 100000,
+    ALPHA = 1e-5, 
+    GAMMA = 0.9999,
+    BATCH_SIZE = 64,
+    MAX_STEPS = 100,
+    EXPLORE_MIN = 0.001,
+    EXPLORE_MAX = 1.0,
+    EXPLORE_LINEAR_DECAY = False, # option to have linear vs exponential exploration decay
+    TRAIN_PER_EPISODE = False, # option to train per episode or per transition
+    NAME = "Defualt",
+    SAVE = 100,
+    DOUBLE = False,
+    NET_WIDTH = 1,
+    MAX_TORQUE = 10.0
+    ):
+    EXPLORE_DECAY = exp( log(EXPLORE_MIN/EXPLORE_MAX)/NUM_EPISODES ) 
+    NAME_OPT = NAME + "_OPT"
+    explore_rate = EXPLORE_MAX + 0.0
+    env = DoublePendulum(make_single=(not DOUBLE), max_torque=MAX_TORQUE)
     observation_space = env.q.shape
-
-    # HYPERPARAMS
-    UPDATE_TARGET_NET = 2000
-    TAU = 1e-5
-    MAX_MEM = 50000
-    ALPHA = 1e-5 # learning rate
-    GAMMA = 0.9999
-    BATCH_SIZE = 64
-    MAX_STEPS = 100
-    EXPLORE_MIN = 0.01
-    EXPLORE_MAX = 1.0
-    EXPLORE_DECAY = exp( log(EXPLORE_MIN/EXPLORE_MAX)/num_episodes ) 
-    EXPLORE_RATE = EXPLORE_MAX + 0.0
-    EXPLORE_LINEAR_DECAY = True # option to have linear vs exponential exploration decay
-    TRAIN_PER_EPISODE = False # option to train per episode or per transition
-
-
-    SAVE = 100
-
     agent = DQNAgent(state_space=observation_space,
                      action_space=env.nu,
                      max_memory_size=MAX_MEM,
                      batch_size=BATCH_SIZE,
                      gamma=GAMMA,
                      lr=ALPHA,
-                     pretrained=pretrained,
-                     tau=TAU
+                     pretrained=False,
+                     tau=TAU,
+                     width = NET_WIDTH
                      )
 
-    for i in tqdm(range(num_episodes)):
-        state = env.reset()
+    for i in tqdm(range(NUM_EPISODES)):
+        state = env.reset(True)
         state = torch.Tensor([state])
         steps = 0
         total_cost = 0.0
         g = 1.0
         while True and steps < MAX_STEPS:
-            action = agent.choose_action(state, EXPLORE_RATE)
+            action = agent.choose_action(state, explore_rate)
             steps += 1
             state_next, cost, terminal, _, _ = env.step(action.item())
             total_cost += g* cost
@@ -233,24 +235,28 @@ def run(training_mode, pretrained, num_episodes=100):
         writer.add_scalar("Total Episode Cost", total_cost, i)
 
         # epsilon decay
-        if EXPLORE_LINEAR_DECAY: EXPLORE_RATE -= (EXPLORE_MAX - EXPLORE_MIN) / float(num_episodes)
-        else: EXPLORE_RATE *= EXPLORE_DECAY
-        EXPLORE_RATE =  max(EXPLORE_RATE, EXPLORE_MIN)
+        if EXPLORE_LINEAR_DECAY: explore_rate -= (EXPLORE_MAX - EXPLORE_MIN) / float(NUM_EPISODES)
+        else: explore_rate *= EXPLORE_DECAY
+        explore_rate =  max(explore_rate, EXPLORE_MIN)
 
         # update target net
         if i % UPDATE_TARGET_NET == 0 and TAU == 0: agent.update_target_net()
 
         # Save the trained memory so that we can continue from where we stop using 'pretrained' = True
-        if ((i +1) % SAVE == 0) and training_mode:
+        if ((i +1) % SAVE == 0):
             env.show((i + 1)/SAVE)
-            print(EXPLORE_RATE)
-            torch.save(agent.policy_net.state_dict(), "DQN_PEND.pt")
-            torch.save(agent.optimizer.state_dict(), "DQN_PEND_OPT.pt")
+            print(explore_rate)
+            torch.save(agent.policy_net.state_dict(), "Models/" + NAME + ".pt")
+            torch.save(agent.optimizer.state_dict(), "Models/" + NAME_OPT + ".pt")
             print("okay")
     
     env.close()
 
-run(True, True, num_episodes=20000)
+def evaluate(NAME):
+    ...
+    # TODO
+
+train()
 
 
 
