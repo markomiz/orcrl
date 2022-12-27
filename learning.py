@@ -13,6 +13,8 @@ import copy
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
+
+from plotting import *
 writer = SummaryWriter()
 
 from pendulum_envs import *
@@ -173,17 +175,17 @@ def train(NUM_EPISODES=10000, \
     
     UPDATE_TARGET_NET = 2000, # ignored if tau != 0
     TAU = 1e-5,
-    MAX_MEM = 100000,
+    MAX_MEM = 1000,
     ALPHA = 1e-5, 
     GAMMA = 0.9999,
     BATCH_SIZE = 64,
     MAX_STEPS = 100,
-    EXPLORE_MIN = 0.001,
+    EXPLORE_MIN = 0.01,
     EXPLORE_MAX = 1.0,
     EXPLORE_LINEAR_DECAY = False, # option to have linear vs exponential exploration decay
     TRAIN_PER_EPISODE = False, # option to train per episode or per transition
     NAME = "Defualt",
-    SAVE = 100,
+    SAVE = 1000,
     DOUBLE = False,
     NET_WIDTH = 1,
     MAX_TORQUE = 10.0
@@ -251,11 +253,43 @@ def train(NUM_EPISODES=10000, \
     
     env.close()
 
-def evaluate(NAME):
+def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=1):
+
+    # load model
+    env = DoublePendulum(make_single=(not DOUBLE), max_torque=MAX_TORQUE)
+    observation_space = env.q.shape
+    model = DQNSolver(observation_space, env.nu, NET_WIDTH)
+    model.load_state_dict("Models/" + NAME + ".pt")
+    model.eval()
+
+    # run starting from 0 and generate trajectory
+    env.q = np.array([0.0,0.0,0.0,0.0])
+    state = torch.Tensor([env.q])
+    steps = 80
+    q_hist = np.zeros((steps+1, env.q.shape[0]))
+    q_hist[0] = env.q
+    total_cost = 0
+    for i in range(steps):
+        state_next, cost, terminal, _, _ = env.step(np.argmin(model(state)))
+        q_hist[i+1] = state_next
+        total_cost += cost # UNDISCOUNTED
+    print("TOTAL COST FOR " + NAME + " IS: " + str(total_cost))
+    plot_trajectory(q_hist, total_cost, NAME)
+    if not DOUBLE:
+        colour_plot(model, env)
+
+
+
+
+
+
+    # do a few runs with random (or set) starts
     ...
     # TODO
 
-train()
+if __name__ == "__main__":
+    train(DOUBLE=True, NET_WIDTH=2, BATCH_SIZE=1024,MAX_MEM=100000, MAX_STEPS=100, TAU=1e-6, ALPHA=1e-5, NUM_EPISODES=20000)
+    # evaluate()
 
 
 
