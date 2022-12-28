@@ -1,12 +1,6 @@
-# Import required libararies
-from pickletools import uint1
 import gym
-import matplotlib.pyplot as plt 
-import random
 import numpy as np
-from math import sin, cos
 from gym.spaces import *
-
 from math import *
 from PIL import *
 
@@ -23,16 +17,14 @@ class DoublePendulum(gym.Env):
         self.l2 = 1.0 # length of pendulum 2 (m)
 
         self.maxv = 8
-        self.max_cost = 0
 
         self.max_u = max_torque
         self.nu = nu
         if make_single:
-            self.m2 = 0
-            self.l2 = 0.01
+            self.m2 = 0.001
+            self.l2 = 0.001
 
         self.single = make_single
-        self.g = 9.81 # gravity (m/s)
         self.frix = 0.1 # friction coef
 
         self.q = np.zeros(4) # [th1, th2, dth1, dth2]
@@ -40,8 +32,6 @@ class DoublePendulum(gym.Env):
         self._update_x()
         self.u = 0.0
 
-        self.history = []
-        self.saving_history = False
         self.images = []
         self.last_cost =0.0
 
@@ -50,43 +40,12 @@ class DoublePendulum(gym.Env):
         # print(newU)
         return newU
 
-    def dynamics_update(self,dt, u):
-        try:
-            acc1 = (-self.m2*self.l1*self.q[2]**2*np.sin(self.q[0] - self.q[1])*np.cos(self.q[0] - self.q[1]) + self.m2*self.g*np.sin(self.q[1])*np.cos(self.q[0] - self.q[1]) - self.m2*self.l2*self.q[3]**2*np.sin(self.q[0] - self.q[1]) - (self.m1 + self.m2)*self.g*np.sin(self.q[0])) / ((self.m1 + self.m2)*self.l1 - self.m2*self.l1*np.cos(self.q[0] - self.q[1])**2) - self.frix * self.q[2]
-            acc2 = (self.m2*self.l2*self.q[3]**2*np.sin(self.q[0] - self.q[1])*np.cos(self.q[0] - self.q[1]) + (self.m1 + self.m2)*self.g*np.sin(self.q[0])*np.cos(self.q[0] - self.q[1]) + self.l1*self.q[2]**2*np.sin(self.q[0]-self.q[1])*(self.m1 + self.m2) - self.g*np.sin(self.q[1])*(self.m1 + self.m2)) / (self.l2*(self.m1 + self.m2) - self.m2*self.l2*np.cos(self.q[0] - self.q[1])**2) - self.frix * self.q[3]
-            # yes it's horrible but it's not about the pendulum simulation is it? :)
-
-            acc1 += u
-            self.u = u
-
-            self.q[2] += dt * acc1
-            self.q[3] += dt * acc2
-            self.q[2] = np.clip(self.q[2], - self.maxv, self.maxv)
-            self.q[3] = np.clip(self.q[3], - self.maxv, self.maxv)
-            self.q[0] += (self.q[2] * dt)
-            self.q[1] += (self.q[3] * dt)
-            # self.q[0] = self.q[0] % (np.pi * 2)
-            # self.q[1] = self.q[1] % (np.pi * 2)
-
-            self._update_x()
-
-            if self.saving_history:
-                self.history.append(self.q)
-            return True
-        except Exception as e:
-            print(self.q)
-            print(u)
-            print(e)
-            return False 
-
     def step(self, action):
         dt = self.DT / np.double(self.updates_per_step)
         terminal = False
         for i in range(self.updates_per_step):
-            if not self.dynamics_update(dt, self.intu2u(action)):
-                terminal = True
-                break
-
+            self.dynamics_update(dt, self.intu2u(action))
+        self._update_x()
         reward = self._calculate_reward()
         return self.q, reward, terminal, False, 0
         # return self.x, reward, terminal, False, 0
@@ -97,7 +56,7 @@ class DoublePendulum(gym.Env):
         cost = U_WEIGHT*self.u**2
         A = ((self.q[0] % (np.pi * 2)) - np.pi )**2
         # B = min(self.q[1], np.pi * 2 - self.q[1]) ** 2 # since we are keeping the angle between 0 and 2 pi
-        B = ((self.q[1] % (np.pi * 2)) - np.pi )**2
+        B = (self.q[1] % (np.pi * 2))**2
         C =  self.q[2] **2
         D =  self.q[3] **2
         cost += A
@@ -112,14 +71,14 @@ class DoublePendulum(gym.Env):
         return cost
     
     def _update_x(self):
-        self.x[0] = self.l1 * cos(- np.pi/ 2+ self.q[0])
-        self.x[1] = self.l1 * sin(- np.pi/ 2+self.q[0])
-        self.x[2] = self.x[0] + self.l2 * cos(- np.pi/ 2+self.q[1])
-        self.x[3] = self.x[1] + self.l2 * sin(- np.pi/ 2+self.q[1])
-        self.x[4] = self.l1 * cos(- np.pi/ 2+ self.q[2])
-        self.x[5] = self.l1 * sin(- np.pi/ 2+self.q[2])
-        self.x[6] = self.x[4] + self.l2 * cos(- np.pi/ 2+self.q[3])
-        self.x[7] = self.x[5] + self.l2 * sin(- np.pi/ 2+self.q[3])
+        self.x[0] = self.l1 * np.sin( self.q[0])
+        self.x[1] = -self.l1 * np.cos(self.q[0])
+        self.x[2] = self.x[0] + self.l2 * np.sin(self.q[1]+ self.q[0])
+        self.x[3] = self.x[1] - self.l2 * np.cos(self.q[1]+self.q[0])
+        self.x[4] = self.l1 * self.q[2]* np.cos( self.q[2])
+        self.x[5] = self.l1 * self.q[2]* np.sin(self.q[2])
+        self.x[6] = self.x[4] + self.l2 * np.cos(self.q[3]+ self.q[2]) * (self.q[2] + self.q[3])
+        self.x[7] = self.x[5] + self.l2 * np.sin(self.q[3]+ self.q[2]) * (self.q[2] + self.q[3])
 
     def reset(self, gaussian=False):
         if not gaussian:
@@ -172,3 +131,51 @@ class DoublePendulum(gym.Env):
         else:
             self.images[0].save('Graphs/Eval Gifs/'+ NAME + '.gif',
             save_all=True, append_images=self.images[1:], loop=0)
+    
+    def calcM(self): # M(q)
+        m2l22 = self.m2 * self.l2 **2
+        m2l1l2c2 = self.m2 * self.l2 * self.l1 * np.cos(self.q[1])
+        self.M = np.zeros((2,2))
+        self.M[0,0] = (self.m1 + self.m2) * self.l1**2 + m2l22 + 2*m2l1l2c2
+        self.M[0,1] = m2l22 + m2l1l2c2
+        self.M[1,0] = m2l22 + m2l1l2c2
+        self.M[1,1] = m2l22
+        self.Minv = np.linalg.inv(self.M)
+    
+    def calcC(self): # C(qdot, q)
+        self.C = np.zeros((2,2))
+        x = self.m2 * self.l1 * self.l2 * np.sin(self.q[1])
+        self.C[0,1] = - x * (2*self.q[2] + self.q[3])
+        self.C[1,0] =  0.5 * x * (2*self.q[2] + self.q[3])
+        self.C[1,1] = - 0.5* x * self.q[2]
+    
+    def calcTg(self): # tau_g(q) forces of gravity
+        self.tau_g = np.zeros((2,1))
+        g2 = self.m2 * self.l2 * np.sin(self.q[0] + self.q[1])
+        self.tau_g[0] = (self.m1 + self.m2) * self.l1 * np.sin(self.q[0]) + g2
+        self.tau_g[1] = g2
+        self.tau_g *= -9.81
+    
+    def calcTf(self): # tau_f(q dot) force due to friction
+        self.tau_f = np.zeros((2,1))
+        self.tau_f[0] = - self.frix * self.q[2]
+        self.tau_f[1] = - self.frix * self.q[3]
+    
+    def calcAccel(self):
+        self.qdot = np.array([[self.q[2], self.q[3]]]).T
+        self.A = self.Minv @ (self.tau_f + self.tau_g + self.u_vec - self.C @ self.qdot)
+    
+    def dynamics_update(self,dt, u):
+        self.calcM()
+        self.calcTg()
+        self.calcTf()
+        self.calcC()
+        self.u = u
+        self.u_vec = np.array([[u,0]]).T
+        self.calcAccel()
+        self.q[2] += dt * self.A[0]
+        self.q[3] += dt * self.A[1]
+        self.q[2] = np.clip(self.q[2], - self.maxv, self.maxv)
+        self.q[3] = np.clip(self.q[3], - self.maxv, self.maxv)
+        self.q[0] += (self.q[2] * dt)
+        self.q[1] += (self.q[3] * dt)

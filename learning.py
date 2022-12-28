@@ -27,20 +27,20 @@ class DQNSolver(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Linear(input_shape[0], 16 * width),
-            nn.Tanh(),
+            nn.LeakyReLU(),
             nn.Linear(16 * width, 32 * width),
-            nn.Tanh(),
+            nn.LeakyReLU(),
             nn.Linear(32* width, 64* width),
-            nn.Tanh(),
+            nn.LeakyReLU(),
             nn.Linear(64* width, 64* width),
-            nn.Tanh(),
+            nn.LeakyReLU(),
             nn.Linear(64* width, n_actions)
         )
-        # for layer in self.fc: # THIS IS FOR WHEN WE USE RELU activation
-        #     try:
-        #         nn.init.kaiming_uniform(layer.weight)
-        #     except:
-        #         print("layer dont have that")
+        for layer in self.fc: # THIS IS FOR WHEN WE USE RELU activation
+            try:
+                nn.init.kaiming_uniform(layer.weight)
+            except:
+                print("layer dont have that")
     
     def forward(self, x):
         out = self.fc(x)
@@ -217,12 +217,12 @@ def train(NUM_EPISODES=10000, \
                      )
 
     for i in tqdm(range(NUM_EPISODES)):
-        state = env.reset(True)
+        state = env.reset()
         state = torch.Tensor([state])
         steps = 0
         total_cost = 0.0
         g = 1.0
-        while True and steps < MAX_STEPS:
+        while steps < MAX_STEPS:
             action = agent.choose_action(state, explore_rate)
             steps += 1
             state_next, cost, terminal, _, _ = env.step(action.item())
@@ -273,15 +273,16 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=1):
     model.eval()
 
     # run starting from 0 and generate trajectory
-    env.q = np.array([0.0,0.0,0.0,0.0])
+    env.q = np.array([3.0,0.0,0.0,0.0])
     state = torch.Tensor([env.q])
-    steps = 80
+    steps = 800
     q_hist = np.zeros((steps+1, env.q.shape[0]))
     u_hist = np.zeros(steps)
     q_hist[0] = env.q
     total_cost = 0
     for i in range(steps):
-        u = torch.argmin(model(state), 1).item()
+        # u = torch.argmin(model(state), 1).item()
+        u = env.nu /2
         state_next, cost, terminal, _, _ = env.step(u)
         u_hist[i] = env.u
         q_hist[i+1] = state_next
@@ -297,8 +298,8 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=1):
 
 
 if __name__ == "__main__":
-    # train(DOUBLE=False, NET_WIDTH=1, BATCH_SIZE=256,MAX_MEM=10000, MAX_STEPS=100, DYNAMIC_TAU=False, ALPHA=1e-5, NUM_EPISODES=2000, NAME="dyn", SAVE=200, EXPLORE_LINEAR_DECAY=True)
-    evaluate(DOUBLE=False, NET_WIDTH=1, NAME="dyn")
+    train(DOUBLE=True, NET_WIDTH=2, BATCH_SIZE=512, MAX_MEM=10000, MAX_STEPS=100, TAU=1e-6, ALPHA=1e-5, NUM_EPISODES=20000, NAME="New", EXPLORE_LINEAR_DECAY=True)
+    evaluate(DOUBLE=True, NET_WIDTH=2, NAME="New")
 
 
 
