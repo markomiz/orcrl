@@ -158,8 +158,8 @@ class DQNAgent:
             current = guess.gather(1, ACTION.long())
             loss = self.l2(current, target)
             if self.dynamic_tau and len(self.last_losses) > 1000:
-                if loss > np.mean(self.last_losses): self.tau *= 1.0 - 1e-2
-                else: self.tau *= 1.0 + 1e-2
+                if loss > np.mean(self.last_losses): self.tau *= 1.0 - 1e-3
+                else: self.tau *= 1.0 + 1e-3
                 self.last_losses.append(loss)
                 self.last_losses.popleft()
 
@@ -183,7 +183,7 @@ def train(NUM_EPISODES=10000, \
     
     UPDATE_TARGET_NET = 2000, # ignored if tau != 0
     TAU = 1e-5,
-    MAX_MEM = 1000,
+    MAX_MEM = 10000,
     ALPHA = 1e-5, 
     GAMMA = 0.9999,
     BATCH_SIZE = 64,
@@ -297,7 +297,7 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=1):
 
 
 if __name__ == "__main__":
-    # train(DOUBLE=False, NET_WIDTH=1, BATCH_SIZE=1024,MAX_MEM=100000, MAX_STEPS=100, DYNAMIC_TAU=True, ALPHA=1e-5, NUM_EPISODES=1000, NAME="dyn")
+    # train(DOUBLE=False, NET_WIDTH=1, BATCH_SIZE=256,MAX_MEM=10000, MAX_STEPS=100, DYNAMIC_TAU=False, ALPHA=1e-5, NUM_EPISODES=2000, NAME="dyn", SAVE=200, EXPLORE_LINEAR_DECAY=True)
     evaluate(DOUBLE=False, NET_WIDTH=1, NAME="dyn")
 
 

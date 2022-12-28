@@ -92,14 +92,14 @@ class DoublePendulum(gym.Env):
         # return self.x, reward, terminal, False, 0
     
     def _calculate_reward(self):
-        VEL_WEIGHT = 0.001
+        VEL_WEIGHT = 0.01
         U_WEIGHT = 0.0001
         cost = U_WEIGHT*self.u**2
         A = ((self.q[0] % (np.pi * 2)) - np.pi )**2
         # B = min(self.q[1], np.pi * 2 - self.q[1]) ** 2 # since we are keeping the angle between 0 and 2 pi
         B = ((self.q[1] % (np.pi * 2)) - np.pi )**2
-        C =  (self.q[2] **2)
-        D =  (self.q[3] **2)
+        C =  self.q[2] **2
+        D =  self.q[3] **2
         cost += A
         cost += VEL_WEIGHT * C
         if not self.single: cost += B + VEL_WEIGHT * D
