@@ -10,6 +10,7 @@ import numpy as np
 import pylab as pl
 from torchvision import models
 import copy
+from collections import deque
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -47,12 +48,14 @@ class DQNSolver(nn.Module):
 
 class DQNAgent:
 
-    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr,pretrained = False, tau=0.0001, NAME = "Defualt", width=1):
+    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr,pretrained = False, tau=0.0001, dynamic_tau=False, NAME = "Defualt", width=1):
         # Define DQN Layers
         self.state_space = state_space
         self.action_space = action_space
         self.device = 'cpu'
         self.tau = tau
+        self.dynamic_tau = dynamic_tau
+        self.last_losses = deque([])
         # DQN network  
         self.policy_net = DQNSolver(state_space, action_space, width).to(self.device)
         self.target_net = DQNSolver(state_space, action_space, width).to(self.device)
@@ -154,6 +157,11 @@ class DQNAgent:
             
             current = guess.gather(1, ACTION.long())
             loss = self.l2(current, target)
+            if self.dynamic_tau and len(self.last_losses) > 1000:
+                if loss > np.mean(self.last_losses): self.tau *= 1.0 - 1e-2
+                else: self.tau *= 1.0 + 1e-2
+                self.last_losses.append(loss)
+                self.last_losses.popleft()
 
             writer.add_scalar("Loss/train", loss, index)
             
@@ -184,11 +192,12 @@ def train(NUM_EPISODES=10000, \
     EXPLORE_MAX = 1.0,
     EXPLORE_LINEAR_DECAY = False, # option to have linear vs exponential exploration decay
     TRAIN_PER_EPISODE = False, # option to train per episode or per transition
-    NAME = "Defualt",
+    NAME = "Default",
     SAVE = 1000,
     DOUBLE = False,
     NET_WIDTH = 1,
-    MAX_TORQUE = 10.0
+    MAX_TORQUE = 10.0,
+    DYNAMIC_TAU = False
     ):
     EXPLORE_DECAY = exp( log(EXPLORE_MIN/EXPLORE_MAX)/NUM_EPISODES ) 
     NAME_OPT = NAME + "_OPT"
@@ -203,6 +212,7 @@ def train(NUM_EPISODES=10000, \
                      lr=ALPHA,
                      pretrained=False,
                      tau=TAU,
+                     dynamic_tau = DYNAMIC_TAU,
                      width = NET_WIDTH
                      )
 
@@ -259,7 +269,7 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=1):
     env = DoublePendulum(make_single=(not DOUBLE), max_torque=MAX_TORQUE)
     observation_space = env.q.shape
     model = DQNSolver(observation_space, env.nu, NET_WIDTH)
-    model.load_state_dict("Models/" + NAME + ".pt")
+    model.load_state_dict(torch.load("Models/" + NAME + ".pt"))
     model.eval()
 
     # run starting from 0 and generate trajectory
@@ -267,29 +277,28 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=1):
     state = torch.Tensor([env.q])
     steps = 80
     q_hist = np.zeros((steps+1, env.q.shape[0]))
+    u_hist = np.zeros(steps)
     q_hist[0] = env.q
     total_cost = 0
     for i in range(steps):
-        state_next, cost, terminal, _, _ = env.step(np.argmin(model(state)))
+        u = torch.argmin(model(state), 1).item()
+        state_next, cost, terminal, _, _ = env.step(u)
+        u_hist[i] = env.u
         q_hist[i+1] = state_next
         total_cost += cost # UNDISCOUNTED
+        state = torch.Tensor([state_next])
+        env.render()
+    env.show(0, NAME)
+    plot_control(u_hist, NAME)
     print("TOTAL COST FOR " + NAME + " IS: " + str(total_cost))
-    plot_trajectory(q_hist, total_cost, NAME)
+    plot_trajectory(q_hist, total_cost,env, NAME)
     if not DOUBLE:
-        colour_plot(model, env)
+        colour_plot(model, env, NAME)
 
-
-
-
-
-
-    # do a few runs with random (or set) starts
-    ...
-    # TODO
 
 if __name__ == "__main__":
-    train(DOUBLE=True, NET_WIDTH=2, BATCH_SIZE=1024,MAX_MEM=100000, MAX_STEPS=100, TAU=1e-6, ALPHA=1e-5, NUM_EPISODES=20000)
-    # evaluate()
+    # train(DOUBLE=False, NET_WIDTH=1, BATCH_SIZE=1024,MAX_MEM=100000, MAX_STEPS=100, DYNAMIC_TAU=True, ALPHA=1e-5, NUM_EPISODES=1000, NAME="dyn")
+    evaluate(DOUBLE=False, NET_WIDTH=1, NAME="dyn")
 
 
 

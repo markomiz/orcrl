@@ -52,8 +52,8 @@ class DoublePendulum(gym.Env):
 
     def dynamics_update(self,dt, u):
         try:
-            acc1 = (-self.m2*self.l1*self.q[2]**2*np.sin(self.q[0] - self.q[1])*np.cos(self.q[0] - self.q[1]) + self.m2*self.g*np.sin(self.q[1])*np.cos(self.q[0] - self.q[1]) - self.m2*self.l2*self.q[3]**2*np.sin(self.q[0] - self.q[1]) - (self.m1 + self.m2)*self.g*np.sin(self.q[0])) / ((self.m1 + self.m2)*self.l1 - self.m2*self.l1*np.cos(self.q[0] - self.q[1])**2) - self.frix * np.sign(self.q[2])
-            acc2 = (self.m2*self.l2*self.q[3]**2*np.sin(self.q[0] - self.q[1])*np.cos(self.q[0] - self.q[1]) + (self.m1 + self.m2)*self.g*np.sin(self.q[0])*np.cos(self.q[0] - self.q[1]) + self.l1*self.q[2]**2*np.sin(self.q[0]-self.q[1])*(self.m1 + self.m2) - self.g*np.sin(self.q[1])*(self.m1 + self.m2)) / (self.l2*(self.m1 + self.m2) - self.m2*self.l2*np.cos(self.q[0] - self.q[1])**2) - self.frix * np.sign(self.q[3])
+            acc1 = (-self.m2*self.l1*self.q[2]**2*np.sin(self.q[0] - self.q[1])*np.cos(self.q[0] - self.q[1]) + self.m2*self.g*np.sin(self.q[1])*np.cos(self.q[0] - self.q[1]) - self.m2*self.l2*self.q[3]**2*np.sin(self.q[0] - self.q[1]) - (self.m1 + self.m2)*self.g*np.sin(self.q[0])) / ((self.m1 + self.m2)*self.l1 - self.m2*self.l1*np.cos(self.q[0] - self.q[1])**2) - self.frix * self.q[2]
+            acc2 = (self.m2*self.l2*self.q[3]**2*np.sin(self.q[0] - self.q[1])*np.cos(self.q[0] - self.q[1]) + (self.m1 + self.m2)*self.g*np.sin(self.q[0])*np.cos(self.q[0] - self.q[1]) + self.l1*self.q[2]**2*np.sin(self.q[0]-self.q[1])*(self.m1 + self.m2) - self.g*np.sin(self.q[1])*(self.m1 + self.m2)) / (self.l2*(self.m1 + self.m2) - self.m2*self.l2*np.cos(self.q[0] - self.q[1])**2) - self.frix * self.q[3]
             # yes it's horrible but it's not about the pendulum simulation is it? :)
 
             acc1 += u
@@ -65,8 +65,8 @@ class DoublePendulum(gym.Env):
             self.q[3] = np.clip(self.q[3], - self.maxv, self.maxv)
             self.q[0] += (self.q[2] * dt)
             self.q[1] += (self.q[3] * dt)
-            self.q[0] = self.q[0] % (np.pi * 2)
-            self.q[1] = self.q[1] % (np.pi * 2)
+            # self.q[0] = self.q[0] % (np.pi * 2)
+            # self.q[1] = self.q[1] % (np.pi * 2)
 
             self._update_x()
 
@@ -92,17 +92,19 @@ class DoublePendulum(gym.Env):
         # return self.x, reward, terminal, False, 0
     
     def _calculate_reward(self):
-        cost = 0.0001*self.u
-        A = (self.q[0] - np.pi )**2
+        VEL_WEIGHT = 0.001
+        U_WEIGHT = 0.0001
+        cost = U_WEIGHT*self.u**2
+        A = ((self.q[0] % (np.pi * 2)) - np.pi )**2
         # B = min(self.q[1], np.pi * 2 - self.q[1]) ** 2 # since we are keeping the angle between 0 and 2 pi
-        B = (self.q[1] - np.pi )**2
-        C = 0.01 * (self.q[2] **2) **2
-        D = 0.01 * (self.q[3] **2) **2
+        B = ((self.q[1] % (np.pi * 2)) - np.pi )**2
+        C =  (self.q[2] **2)
+        D =  (self.q[3] **2)
         cost += A
-        cost += 0.1 * C
-        if not self.single: cost += B + .1 * D
+        cost += VEL_WEIGHT * C
+        if not self.single: cost += B + VEL_WEIGHT * D
         ## help convergence by making sure cost is between -1, 1 and clip it
-        cost /= 6.0
+        cost /= 10.0
         cost -= 1.0
         cost = np.clip(cost, -1.0, 1.0)
         self.last_cost = cost
@@ -119,7 +121,7 @@ class DoublePendulum(gym.Env):
         self.x[6] = self.x[4] + self.l2 * cos(- np.pi/ 2+self.q[3])
         self.x[7] = self.x[5] + self.l2 * sin(- np.pi/ 2+self.q[3])
 
-    def reset(self, gaussian=True):
+    def reset(self, gaussian=False):
         if not gaussian:
             randangles = np.random.uniform(0, 2* np.pi, size=2)
             self.q[0] = randangles[0]
@@ -163,6 +165,10 @@ class DoublePendulum(gym.Env):
         # add something for plotting
         return 
 
-    def show(self, i):
-        self.images[0].save('gifs/pend'+ str(int(i)) + '.gif',
-        save_all=True, append_images=self.images[1:], loop=0)
+    def show(self, i, NAME=None):
+        if NAME is None:
+            self.images[0].save('gifs/pend'+ str(int(i)) + '.gif',
+            save_all=True, append_images=self.images[1:], loop=0)
+        else:
+            self.images[0].save('Graphs/Eval Gifs/'+ NAME + '.gif',
+            save_all=True, append_images=self.images[1:], loop=0)
