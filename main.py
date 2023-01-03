@@ -15,7 +15,7 @@ print("- TOTAL EPISODES TESTS -")
 for eps in [100,2000, 5000]: # 1000 is default
     name = "episodes test"+ str(eps)
     t1 = time.time()
-    train(NUM_EPISODES=eps, NAME=name)
+    train(NUM_EPISODES=eps, NAME=name, SAVE=eps)
     t2 = time.time()
     total_time = t2 - t1 
     evaluate(name) 
