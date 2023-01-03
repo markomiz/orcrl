@@ -1,5 +1,5 @@
 from learning import *
-from time import *
+import time
 
 ###  SINGE PENDULUM EXPERIMENTS   #########################################
 
