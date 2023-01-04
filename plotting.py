@@ -1,24 +1,26 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from scipy import ndimage
 
 def colour_plot(model, env, name="Default"): # only for use with single pendulum
     # with plt.xkcd():
     SIZE = 128
-    data = np.zeros((SIZE,SIZE))
-    Q = np.arange(0, 2*np.pi, 2* np.pi / SIZE)
-    Qdot = np.arange(-env.maxv, env.maxv, 2 * env.maxv/SIZE)
+    data = torch.zeros((SIZE,SIZE))
+    Q = torch.arange(0, 2*np.pi, 2* np.pi / SIZE)
+    Qdot = torch.arange(-env.maxv, env.maxv, 2 * env.maxv/SIZE)
     extent = (-env.maxv, env.maxv,0, 2*np.pi )
     # for each disretisation of state space evaluate the model 
-    for q in range(SIZE):
-        for q_dot in range(SIZE):
+    for q in torch.arange(SIZE):
+        for q_dot in torch.arange(SIZE):
             env.q[0] = Q[q]
             env.q[2] = Qdot[q_dot]
             env._update_x()
             state = env.x
-            state = torch.Tensor([state])
+            state = state.unsqueeze(0)
             data[q,q_dot] = env.intu2u(torch.min(model(state)))
     
+
     plt.imshow(data, extent=extent, aspect=8/(np.pi))
     plt.ylabel("Joint Position (rad)")
     plt.xlabel("Joint Velocity (rad/s)")
