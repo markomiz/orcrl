@@ -1,5 +1,5 @@
 from learning import *
-from time import *
+from time import time
 
 ###  SINGE PENDULUM EXPERIMENTS   #########################################
 
@@ -14,6 +14,7 @@ from time import *
 print("- TOTAL EPISODES TESTS -")
 for eps in [10,200, 2000, 5000]: # 1000 is default
     name = "episodes test"+ str(eps)
+
     t1 = time()
     train(NUM_EPISODES=eps, NAME=name, SAVE=eps)
     t2 = time()

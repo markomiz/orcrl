@@ -48,15 +48,12 @@ class DQNSolver(nn.Module):
 
 class DQNAgent:
 
-    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr,pretrained = False, tau=0.0001, dynamic_tau=False, NAME = "Defualt", width=1):
+    def __init__(self, state_space, action_space, max_memory_size, batch_size, gamma, lr, device, pretrained = False, tau=0.0001, dynamic_tau=False, NAME = "Defualt", width=1):
         # Define DQN Layers
         self.state_space = state_space
         self.action_space = action_space
-        if torch.cuda.is_available():
-            self.device = torch.device('cuda')
-        else:
-            self.device = torch.device('cpu')
-        
+
+        self.device = device
         self.tau = tau
         self.dynamic_tau = dynamic_tau
         self.prev_loss = 0
@@ -227,6 +224,14 @@ def train(NUM_EPISODES=1000, \
     DYNAMIC_TAU = False,
     pretrained = False,
     ):
+
+    if torch.cuda.is_available():
+        device_id = torch.device('cuda')
+    else:
+        device_id = torch.device('cpu')
+        
+    print('Device in use is:', device_id)
+
     global writer
     writer = SummaryWriter(log_dir="runs/" + NAME)
     EXPLORE_DECAY = exp( log(EXPLORE_MIN/EXPLORE_MAX)/NUM_EPISODES ) 
@@ -241,6 +246,7 @@ def train(NUM_EPISODES=1000, \
                      batch_size=BATCH_SIZE,
                      gamma=GAMMA,
                      lr=ALPHA,
+                     device = device_id,
                      pretrained=pretrained,
                      tau=TAU,
                      dynamic_tau = DYNAMIC_TAU,
@@ -250,7 +256,7 @@ def train(NUM_EPISODES=1000, \
 
     for i in tqdm(range(NUM_EPISODES)):
         state = env.reset()
-        state = state.unsqueeze(0)
+        state = state.unsqueeze(0).to(device_id)
         steps = 0
         total_cost = 0.0
         g = 1.0
@@ -260,10 +266,10 @@ def train(NUM_EPISODES=1000, \
             state_next, cost, terminal, _, _ = env.step(action.item())
             total_cost += g* cost
             g *= GAMMA
-            state_next = state_next.unsqueeze(0)
-            cost = torch.Tensor([cost])
+            state_next = state_next.unsqueeze(0).to(device_id)
+            cost = torch.Tensor([cost]).to(device_id)
             
-            terminal = torch.Tensor([int(terminal)])
+            terminal = torch.Tensor([int(terminal)]).to(device_id)
             agent.remember(state, action, cost, state_next, terminal)
             state = state_next
             if terminal:
