@@ -52,7 +52,11 @@ class DQNAgent:
         # Define DQN Layers
         self.state_space = state_space
         self.action_space = action_space
-        self.device = 'cpu'
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda')
+        else:
+            self.device = torch.device('cpu')
+        
         self.tau = tau
         self.dynamic_tau = dynamic_tau
         self.prev_loss = 0
@@ -240,12 +244,13 @@ def train(NUM_EPISODES=1000, \
                      pretrained=pretrained,
                      tau=TAU,
                      dynamic_tau = DYNAMIC_TAU,
-                     width = NET_WIDTH
+                     width = NET_WIDTH,
+                     NAME=NAME
                      )
 
     for i in tqdm(range(NUM_EPISODES)):
         state = env.reset()
-        state = torch.Tensor([state])
+        state = state.unsqueeze(0)
         steps = 0
         total_cost = 0.0
         g = 1.0
@@ -255,10 +260,9 @@ def train(NUM_EPISODES=1000, \
             state_next, cost, terminal, _, _ = env.step(action.item())
             total_cost += g* cost
             g *= GAMMA
-            state_next = torch.Tensor([state_next])
+            state_next = state_next.unsqueeze(0)
             cost = torch.Tensor([cost])
             
-            # if steps == MAX_STEPS: terminal = True
             terminal = torch.Tensor([int(terminal)])
             agent.remember(state, action, cost, state_next, terminal)
             state = state_next
@@ -284,12 +288,12 @@ def train(NUM_EPISODES=1000, \
         # Save the trained memory so that we can continue from where we stop using 'pretrained' = True
         if ((i +1) % SAVE == 0):
             env.show((i + 1)/SAVE)
-            print(explore_rate)
             torch.save(agent.policy_net.state_dict(), "Models/" + NAME + ".pt")
             torch.save(agent.optimizer.state_dict(), "Models/" + NAME_OPT + ".pt")
-            print("okay")
+
     save_settings_to_file(NUM_EPISODES,UPDATE_TARGET_NET,TAU,MAX_MEM,ALPHA, GAMMA,BATCH_SIZE,MAX_STEPS,EXPLORE_MIN,EXPLORE_MAX,EXPLORE_LINEAR_DECAY,TRAIN_PER_EPISODE, NAME,SAVE,DOUBLE,NET_WIDTH,MAX_TORQUE,DYNAMIC_TAU )
     env.close()
+    writer.close()
 
 def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
 
@@ -301,9 +305,9 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
     model.eval()
 
     # run starting from 0 and generate trajectory
-    env.q = np.array([0.0,0.0,0.0,0.0])
+    env.q = torch.Tensor(np.array([0.0,0.0,0.0,0.0]))
     env._update_x()
-    state = torch.Tensor([env.x])
+    state = env.x.unsqueeze(0)
     # state = torch.Tensor([env.reset()])
     steps = 1000
     q_hist = np.zeros((steps+1, env.q.shape[0]))
@@ -318,7 +322,7 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
         u_hist[i] = env.u
         q_hist[i+1] = env.q
         total_cost += cost # UNDISCOUNTED
-        state = torch.Tensor([state_next])
+        state = state_next.unsqueeze(0)
         env.render()
     env.show(0, NAME)
     plot_control(u_hist, NAME)
@@ -329,5 +333,6 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
 
 
 if __name__ == "__main__":
-    # train()
-    evaluate()
+    train(NAME="BIG DUBS", MAX_MEM=50000, NUM_EPISODES=10000, DOUBLE=True, NET_WIDTH=4, pretrained=True, EXPLORE_MAX=0.2, EXPLORE_MIN=0.01, EXPLORE_LINEAR_DECAY=True)
+    evaluate(NAME="BIG DUBS", NET_WIDTH=4, DOUBLE=True)
+
