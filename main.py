@@ -3,16 +3,16 @@ from time import time
 
 ###  SINGE PENDULUM EXPERIMENTS   #########################################
 
-# # default case # 
-# t1 = time()
-# train()
-# t2 = time()
-# total_time = t2 - t1 
-# evaluate() 
-# print("Default time to complete: ", total_time)
+# default case # 
+t1 = time()
+train()
+t2 = time()
+total_time = t2 - t1 
+evaluate() 
+print("Default time to complete: ", total_time)
 
 print("- TOTAL EPISODES TESTS -")
-for eps in [10,200, 2000, 5000]: # 1000 is default
+for eps in [100, 2000, 5000]: # 1000 is default
     name = "episodes test"+ str(eps)
 
     t1 = time()
