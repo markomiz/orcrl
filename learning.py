@@ -314,8 +314,7 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
     env.q = torch.Tensor(np.array([0.0,0.0,0.0,0.0]))
     env._update_x()
     state = env.x.unsqueeze(0)
-    # state = torch.Tensor([env.reset()])
-    steps = 1000
+    steps = 500
     q_hist = np.zeros((steps+1, env.q.shape[0]))
     x_hist = np.zeros((steps+1, env.x.shape[0]))
     u_hist = np.zeros(steps)
@@ -323,13 +322,13 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
     total_cost = 0
     for i in range(steps):
         u = torch.argmin(model(state), 1).item()
-        # u = env.nu / 2
         state_next, cost, terminal, _, _ = env.step(u)
         u_hist[i] = env.u
         q_hist[i+1] = env.q
         total_cost += cost # UNDISCOUNTED
         state = state_next.unsqueeze(0)
         env.render()
+    print(q_hist[:,0])
     env.show(0, NAME)
     plot_control(u_hist, NAME)
     print("TOTAL COST FOR " + NAME + " IS: " + str(total_cost.item()))
@@ -339,6 +338,6 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
 
 
 if __name__ == "__main__":
-    train(NAME="BIG DUBS", MAX_MEM=50000, NUM_EPISODES=10000, DOUBLE=True, NET_WIDTH=4, pretrained=True, EXPLORE_MAX=0.2, EXPLORE_MIN=0.01, EXPLORE_LINEAR_DECAY=True)
-    evaluate(NAME="BIG DUBS", NET_WIDTH=4, DOUBLE=True)
+    # train()
+    evaluate()
 

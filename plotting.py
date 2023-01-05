@@ -6,28 +6,38 @@ from scipy import ndimage
 def colour_plot(model, env, name="Default"): # only for use with single pendulum
     # with plt.xkcd():
     SIZE = 128
-    data = torch.zeros((SIZE,SIZE))
-    Q = torch.arange(0, 2*np.pi, 2* np.pi / SIZE)
-    Qdot = torch.arange(-env.maxv, env.maxv, 2 * env.maxv/SIZE)
+    data_value = np.zeros((SIZE,SIZE))
+    data_control = np.zeros((SIZE,SIZE))
+    Q = np.arange(0, 2*np.pi, 2* np.pi / SIZE)
+    Qdot = np.arange(-env.maxv, env.maxv, 2 * env.maxv/SIZE)
     extent = (-env.maxv, env.maxv,0, 2*np.pi )
     # for each disretisation of state space evaluate the model 
-    for q in torch.arange(SIZE):
-        for q_dot in torch.arange(SIZE):
+    for q in np.arange(SIZE):
+        for q_dot in np.arange(SIZE):
             env.q[0] = Q[q]
             env.q[2] = Qdot[q_dot]
             env._update_x()
             state = env.x
             state = state.unsqueeze(0)
-            data[q,q_dot] = env.intu2u(torch.min(model(state)))
+            data_value[q,q_dot] = torch.min(model(state)).item()
+            data_control[q,q_dot] = env.intu2u(torch.argmin(model(state)))
     
 
-    plt.imshow(data, extent=extent, aspect=8/(np.pi))
+    plt.imshow(data_value, extent=extent, aspect=8/(np.pi))
     plt.ylabel("Joint Position (rad)")
     plt.xlabel("Joint Velocity (rad/s)")
-    # plt.xticks(Q)
-    # plt.yticks(Qdot)
-    plt.colorbar()
-    plt.savefig("Graphs/ColourPlots/" + name + ".png")
+    plt.title("Value Function")
+    cbar = plt.colorbar()
+    cbar.set_label("TD Cost")
+    plt.savefig("Graphs/ColourPlots/" + name + "_value.png")
+    plt.clf()
+    plt.imshow(data_control, extent=extent, aspect=8/(np.pi))
+    plt.ylabel("Joint Position (rad)")
+    plt.xlabel("Joint Velocity (rad/s)")
+    plt.title("Policy")
+    cbar = plt.colorbar()
+    cbar.set_label("Control")
+    plt.savefig("Graphs/ColourPlots/" + name + "_control.png")
     plt.clf()
     
 
