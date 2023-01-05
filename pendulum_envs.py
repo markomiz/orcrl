@@ -26,7 +26,7 @@ class DoublePendulum(gym.Env):
             self.l2 = 0.001
 
         self.single = make_single
-        self.frix = 0.9
+        self.frix = 0.1
 
         self.q = torch.zeros(4) # [th1, th2, dth1, dth2]
         self.x = torch.zeros(8)
