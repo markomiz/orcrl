@@ -154,11 +154,12 @@ class DQNAgent:
             
             #  r + γ min_a Q(S', a) 
             next_val = (self.gamma * self.target_net(STATE2).min(1).values.unsqueeze(1))
+            
             target = COST + torch.mul(next_val, 1 - DONE)
-            
+
             guess = self.policy_net(STATE)
-            
             current = guess.gather(1, ACTION.long())
+
             loss = self.l2(current, target)
             if self.dynamic_tau: # TODO - improve this...
                 if self.prev_loss == 0: self.prev_loss = loss.item()
@@ -209,7 +210,7 @@ def train(NUM_EPISODES=1000, \
     TAU = 1e-4,
     MAX_MEM = 10000,
     ALPHA = 1e-5, 
-    GAMMA = 0.9999,
+    GAMMA = 0.99,
     BATCH_SIZE = 1024,
     MAX_STEPS = 100,
     EXPLORE_MIN = 0.01,
@@ -224,7 +225,8 @@ def train(NUM_EPISODES=1000, \
     DYNAMIC_TAU = False,
     pretrained = False,
     ):
-
+    global index
+    index = 0
     if torch.cuda.is_available():
         device_id = torch.device('cuda')
     else:
@@ -328,7 +330,6 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
         total_cost += cost # UNDISCOUNTED
         state = state_next.unsqueeze(0)
         env.render()
-    print(q_hist[:,0])
     env.show(0, NAME)
     plot_control(u_hist, NAME)
     print("TOTAL COST FOR " + NAME + " IS: " + str(total_cost.item()))
@@ -338,6 +339,6 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
 
 
 if __name__ == "__main__":
-    # train()
+    train()
     evaluate()
 
