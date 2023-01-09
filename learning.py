@@ -332,7 +332,7 @@ def evaluate(NAME="Default", DOUBLE = False, MAX_TORQUE=10.0, NET_WIDTH=2):
         env.render()
     env.show(0, NAME)
     plot_control(u_hist, NAME)
-    print("TOTAL COST FOR " + NAME + " IS: " + total_cost)
+    print("TOTAL COST FOR " + NAME + " IS: " + str(total_cost))
     plot_trajectory(q_hist, total_cost,env, NAME)
     if not DOUBLE:
         colour_plot(model, env, NAME)
