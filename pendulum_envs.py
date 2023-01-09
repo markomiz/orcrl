@@ -9,7 +9,7 @@ class DoublePendulum(gym.Env):
 
     def __init__(self, make_single=False, max_torque=10.0, nu=11):
         self.DT = 0.05 # corresponds to control frequency
-        self.updates_per_step = 10 # corresponds to how many steps of physics between each control loop
+        self.updates_per_step = 1 # corresponds to how many steps of physics between each control loop
 
         self.m1 = 1.0 # mass of pendulum 1 (kg)
         self.l1 = 1.0 # length of pendulum 1 (m)

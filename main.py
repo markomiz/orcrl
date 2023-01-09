@@ -3,16 +3,16 @@ from time import time
 
 ###  SINGE PENDULUM EXPERIMENTS   #########################################
 
-# # default case # 
-# t1 = time()
-# train()
-# t2 = time()
-# total_time = t2 - t1 
-# evaluate() 
-# print("Default time to complete: ", total_time)
+# default case # 
+t1 = time()
+train()
+t2 = time()
+total_time = t2 - t1 
+evaluate() 
+print("Default time to complete: ", total_time)
 
 print("- TOTAL EPISODES TESTS -")
-for eps in [10,200, 2000, 5000]: # 1000 is default
+for eps in [100, 2000, 5000]: # 1000 is default
     name = "episodes test"+ str(eps)
 
     t1 = time()
@@ -24,7 +24,7 @@ for eps in [10,200, 2000, 5000]: # 1000 is default
 
 # max torque experiments
 print("- MAX TORQUE TESTS -")
-for torque in [2.0,5.0,20.0]: # 10.0 is default
+for torque in [1.0,2.0,5.0,20.0]: # 10.0 is default
     name = "torque test"+ str(torque)
     t1 = time()
     train(MAX_TORQUE=torque, NAME=name)
@@ -68,13 +68,13 @@ for tau in [1e-2,1e-3,1e-5,1e-6]: # 1e-4 is default
 
 # net width
 print("- NET WIDTH TESTS -")
-for n in [1,2,4,8]: # 2 is default
+for n in [1,4,8]: # 2 is default
     name = "net size test"+ str(n)
     t1 = time()
     train(NET_WIDTH=n, NAME=name)
     t2 = time()
     total_time = t2 - t1 
-    evaluate(name) 
+    evaluate(name, NET_WIDTH=n) 
     print(name + " time to complete: ", total_time)
 
 # gamma test
